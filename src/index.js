@@ -3,7 +3,7 @@ const path = require('node:path');
 const AutoLaunch = require('auto-launch');
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
-if (require('electron-squirrel-startup')) {
+if (process.platform === 'win32' && require('electron-squirrel-startup')) {
   app.quit();
 }
 
@@ -25,12 +25,16 @@ const autoLauncher = new AutoLaunch({
 });
 
 function createWindow() {
+  const isMac = process.platform === 'darwin';
+
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 800,
     minWidth: 800,
     minHeight: 600,
-    frame: false,
+    frame: isMac, // macOS uses native frame with hidden titlebar
+    titleBarStyle: isMac ? 'hiddenInset' : undefined,
+    trafficLightPosition: isMac ? { x: 12, y: 12 } : undefined,
     transparent: false,
     backgroundColor: '#ffffff',
     show: false,
@@ -46,23 +50,7 @@ function createWindow() {
 
   // Inject drag region, window controls, and page fixes
   mainWindow.webContents.on('did-finish-load', () => {
-    mainWindow.webContents.insertCSS(`
-      #electron-drag-bar {
-        position: fixed; top: 0; left: 0; right: 130px; height: 32px;
-        -webkit-app-region: drag; z-index: 99999;
-      }
-      #electron-window-controls {
-        position: fixed; top: 4px; right: 8px; z-index: 100000;
-        display: flex; gap: 2px;
-      }
-      #electron-window-controls button {
-        width: 32px; height: 28px; border: none; border-radius: 6px;
-        background: transparent; color: #64748b; cursor: pointer;
-        display: flex; align-items: center; justify-content: center;
-        transition: background 0.15s, color 0.15s;
-      }
-      #electron-window-controls button:hover { background: rgba(0,0,0,0.08); color: #1e293b; }
-      #electron-window-controls button.close-btn:hover { background: #ef4444; color: #fff; }
+    const commonCSS = `
       .auth-container {
         height: 100vh !important;
         min-height: 0 !important;
@@ -71,40 +59,72 @@ function createWindow() {
       .auth-form-container {
         overflow-y: auto !important;
       }
-    `);
-    mainWindow.webContents.executeJavaScript(`
-      (function() {
-        if (document.getElementById('electron-drag-bar')) return;
+    `;
 
-        var bar = document.createElement('div');
-        bar.id = 'electron-drag-bar';
-        document.body.appendChild(bar);
+    if (isMac) {
+      // macOS: just add a drag region for the hidden titlebar area
+      mainWindow.webContents.insertCSS(commonCSS + `
+        body::before {
+          content: '';
+          position: fixed; top: 0; left: 0; right: 0; height: 38px;
+          -webkit-app-region: drag; z-index: 99999;
+          pointer-events: none;
+        }
+      `);
+    } else {
+      // Windows: custom frameless window controls
+      mainWindow.webContents.insertCSS(commonCSS + `
+        #electron-drag-bar {
+          position: fixed; top: 0; left: 0; right: 130px; height: 32px;
+          -webkit-app-region: drag; z-index: 99999;
+        }
+        #electron-window-controls {
+          position: fixed; top: 4px; right: 8px; z-index: 100000;
+          display: flex; gap: 2px;
+        }
+        #electron-window-controls button {
+          width: 32px; height: 28px; border: none; border-radius: 6px;
+          background: transparent; color: #64748b; cursor: pointer;
+          display: flex; align-items: center; justify-content: center;
+          transition: background 0.15s, color 0.15s;
+        }
+        #electron-window-controls button:hover { background: rgba(0,0,0,0.08); color: #1e293b; }
+        #electron-window-controls button.close-btn:hover { background: #ef4444; color: #fff; }
+      `);
+      mainWindow.webContents.executeJavaScript(`
+        (function() {
+          if (document.getElementById('electron-drag-bar')) return;
 
-        var controls = document.createElement('div');
-        controls.id = 'electron-window-controls';
+          var bar = document.createElement('div');
+          bar.id = 'electron-drag-bar';
+          document.body.appendChild(bar);
 
-        var minBtn = document.createElement('button');
-        minBtn.title = 'Minimize';
-        minBtn.innerHTML = '<svg width="10" height="1" viewBox="0 0 10 1"><rect width="10" height="1" fill="currentColor"/></svg>';
-        minBtn.addEventListener('click', function() { window.electronAPI.minimize(); });
+          var controls = document.createElement('div');
+          controls.id = 'electron-window-controls';
 
-        var maxBtn = document.createElement('button');
-        maxBtn.title = 'Maximize';
-        maxBtn.innerHTML = '<svg width="10" height="10" viewBox="0 0 10 10"><rect width="10" height="10" rx="1" fill="none" stroke="currentColor" stroke-width="1.2"/></svg>';
-        maxBtn.addEventListener('click', function() { window.electronAPI.maximize(); });
+          var minBtn = document.createElement('button');
+          minBtn.title = 'Minimize';
+          minBtn.innerHTML = '<svg width="10" height="1" viewBox="0 0 10 1"><rect width="10" height="1" fill="currentColor"/></svg>';
+          minBtn.addEventListener('click', function() { window.electronAPI.minimize(); });
 
-        var closeBtn = document.createElement('button');
-        closeBtn.title = 'Close';
-        closeBtn.className = 'close-btn';
-        closeBtn.innerHTML = '<svg width="10" height="10" viewBox="0 0 10 10"><line x1="0" y1="0" x2="10" y2="10" stroke="currentColor" stroke-width="1.4"/><line x1="10" y1="0" x2="0" y2="10" stroke="currentColor" stroke-width="1.4"/></svg>';
-        closeBtn.addEventListener('click', function() { window.electronAPI.close(); });
+          var maxBtn = document.createElement('button');
+          maxBtn.title = 'Maximize';
+          maxBtn.innerHTML = '<svg width="10" height="10" viewBox="0 0 10 10"><rect width="10" height="10" rx="1" fill="none" stroke="currentColor" stroke-width="1.2"/></svg>';
+          maxBtn.addEventListener('click', function() { window.electronAPI.maximize(); });
 
-        controls.appendChild(minBtn);
-        controls.appendChild(maxBtn);
-        controls.appendChild(closeBtn);
-        document.body.appendChild(controls);
-      })();
-    `);
+          var closeBtn = document.createElement('button');
+          closeBtn.title = 'Close';
+          closeBtn.className = 'close-btn';
+          closeBtn.innerHTML = '<svg width="10" height="10" viewBox="0 0 10 10"><line x1="0" y1="0" x2="10" y2="10" stroke="currentColor" stroke-width="1.4"/><line x1="10" y1="0" x2="0" y2="10" stroke="currentColor" stroke-width="1.4"/></svg>';
+          closeBtn.addEventListener('click', function() { window.electronAPI.close(); });
+
+          controls.appendChild(minBtn);
+          controls.appendChild(maxBtn);
+          controls.appendChild(closeBtn);
+          document.body.appendChild(controls);
+        })();
+      `);
+    }
   });
 
   mainWindow.once('ready-to-show', () => {

@@ -20,7 +20,15 @@ module.exports = {
     },
     {
       name: '@electron-forge/maker-zip',
-      platforms: ['win32'],
+      platforms: ['win32', 'darwin'],
+    },
+    {
+      name: '@electron-forge/maker-dmg',
+      config: {
+        name: 'MindScape',
+        icon: './src/assets/icon.icns',
+        format: 'ULFO',
+      },
     },
   ],
   publishers: [

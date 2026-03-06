@@ -1,4 +1,4 @@
-name: Build Windows Desktop App
+name: Build Desktop Apps
 
 on:
   push:
@@ -14,7 +14,7 @@ permissions:
   contents: write
 
 jobs:
-  build:
+  build-windows:
     runs-on: windows-latest
 
     steps:
@@ -62,6 +62,116 @@ jobs:
         shell: bash
         run: find out/make -type f -name "*.exe" -o -name "*.nupkg" -o -name "RELEASES" | head -20
 
+      - name: Upload Windows artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-artifacts
+          path: |
+            out/make/squirrel.windows/x64/*.exe
+            out/make/squirrel.windows/x64/*.nupkg
+            out/make/squirrel.windows/x64/RELEASES
+
+  build-macos:
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Set version from tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          VERSION="${GITHUB_REF#refs/tags/v}"
+          echo "RELEASE_VERSION=$VERSION" >> $GITHUB_ENV
+          npm version "$VERSION" --no-git-tag-version --allow-same-version
+
+      - name: Set version from input
+        if: github.event_name == 'workflow_dispatch' && github.event.inputs.version != ''
+        run: |
+          VERSION="${{ github.event.inputs.version }}"
+          echo "RELEASE_VERSION=$VERSION" >> $GITHUB_ENV
+          npm version "$VERSION" --no-git-tag-version --allow-same-version
+
+      - name: Read version from package.json
+        if: env.RELEASE_VERSION == ''
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          echo "RELEASE_VERSION=$VERSION" >> $GITHUB_ENV
+
+      - name: Generate macOS icon
+        run: |
+          mkdir -p src/assets/icon.iconset
+          # Generate all required sizes for .icns from the 1024px icon
+          for size in 16 32 64 128 256 512; do
+            sips -z $size $size src/assets/icon-1024.png --out src/assets/icon.iconset/icon_${size}x${size}.png
+            double=$((size * 2))
+            if [ $double -le 1024 ]; then
+              sips -z $double $double src/assets/icon-1024.png --out src/assets/icon.iconset/icon_${size}x${size}@2x.png
+            fi
+          done
+          # 512@2x is 1024
+          cp src/assets/icon-1024.png src/assets/icon.iconset/icon_512x512@2x.png
+          iconutil -c icns src/assets/icon.iconset -o src/assets/icon.icns
+          echo "Generated icon.icns"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build and make DMG
+        run: npx electron-forge make
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: List build output
+        run: find out/make -type f -name "*.dmg" -o -name "*.zip" | head -20
+
+      - name: Upload macOS artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-artifacts
+          path: |
+            out/make/*.dmg
+
+  release:
+    needs: [build-windows, build-macos]
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set version
+        run: |
+          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            VERSION="${GITHUB_REF#refs/tags/v}"
+          elif [[ -n "${{ github.event.inputs.version }}" ]]; then
+            VERSION="${{ github.event.inputs.version }}"
+          else
+            VERSION=$(node -p "require('./package.json').version")
+          fi
+          echo "RELEASE_VERSION=$VERSION" >> $GITHUB_ENV
+
+      - name: Download Windows artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: windows-artifacts
+          path: artifacts/windows
+
+      - name: Download macOS artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: macos-artifacts
+          path: artifacts/macos
+
+      - name: List all artifacts
+        run: find artifacts -type f | head -30
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
@@ -71,8 +181,9 @@ jobs:
           prerelease: false
           generate_release_notes: true
           files: |
-            out/make/squirrel.windows/x64/*.exe
-            out/make/squirrel.windows/x64/*.nupkg
-            out/make/squirrel.windows/x64/RELEASES
+            artifacts/windows/**/*.exe
+            artifacts/windows/**/*.nupkg
+            artifacts/windows/**/RELEASES
+            artifacts/macos/**/*.dmg
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
