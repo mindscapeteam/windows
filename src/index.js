@@ -1,6 +1,5 @@
 const { app, BrowserWindow, Tray, Menu, ipcMain, nativeImage, shell } = require('electron');
 const path = require('node:path');
-const AutoLaunch = require('auto-launch');
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (process.platform === 'win32' && require('electron-squirrel-startup')) {
@@ -19,10 +18,6 @@ const PRODUCTION_URL = 'https://mindscapehealth.org/dashboard';
 let mainWindow = null;
 let tray = null;
 
-const autoLauncher = new AutoLaunch({
-  name: 'MindScape',
-  isHidden: true,
-});
 
 function createWindow() {
   const isMac = process.platform === 'darwin';
@@ -163,13 +158,9 @@ function createTray() {
     {
       label: 'Start on Login',
       type: 'checkbox',
-      checked: true,
-      click: async (menuItem) => {
-        if (menuItem.checked) {
-          await autoLauncher.enable();
-        } else {
-          await autoLauncher.disable();
-        }
+      checked: app.getLoginItemSettings().openAtLogin,
+      click: (menuItem) => {
+        app.setLoginItemSettings({ openAtLogin: menuItem.checked });
       },
     },
     { type: 'separator' },
@@ -237,9 +228,8 @@ app.whenReady().then(async () => {
   createTray();
 
   // Enable auto-launch by default on first run
-  const isEnabled = await autoLauncher.isEnabled();
-  if (!isEnabled) {
-    await autoLauncher.enable();
+  if (!app.getLoginItemSettings().openAtLogin) {
+    app.setLoginItemSettings({ openAtLogin: true });
   }
 });
 
