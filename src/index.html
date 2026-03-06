@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MindScape</title>
+  <link rel="stylesheet" href="index.css">
+</head>
+<body>
+  <!-- Custom title bar -->
+  <div id="titlebar">
+    <div id="titlebar-drag">
+      <img id="titlebar-icon" src="assets/icon.png" alt="" width="16" height="16">
+      <span id="titlebar-title">MindScape</span>
+    </div>
+    <div id="titlebar-controls">
+      <button id="btn-minimize" class="titlebar-btn" aria-label="Minimize">
+        <svg width="10" height="1" viewBox="0 0 10 1">
+          <rect width="10" height="1" fill="currentColor"/>
+        </svg>
+      </button>
+      <button id="btn-maximize" class="titlebar-btn" aria-label="Maximize">
+        <svg id="icon-maximize" width="10" height="10" viewBox="0 0 10 10">
+          <rect width="10" height="10" rx="1" fill="none" stroke="currentColor" stroke-width="1"/>
+        </svg>
+        <svg id="icon-restore" width="10" height="10" viewBox="0 0 10 10" style="display:none">
+          <rect x="2" y="0" width="8" height="8" rx="1" fill="none" stroke="currentColor" stroke-width="1"/>
+          <rect x="0" y="2" width="8" height="8" rx="1" fill="none" stroke="currentColor" stroke-width="1"/>
+        </svg>
+      </button>
+      <button id="btn-close" class="titlebar-btn titlebar-btn-close" aria-label="Close">
+        <svg width="10" height="10" viewBox="0 0 10 10">
+          <line x1="0" y1="0" x2="10" y2="10" stroke="currentColor" stroke-width="1.2"/>
+          <line x1="10" y1="0" x2="0" y2="10" stroke="currentColor" stroke-width="1.2"/>
+        </svg>
+      </button>
+    </div>
+  </div>
+
+  <!-- Loading screen -->
+  <div id="loading">
+    <div id="loading-content">
+      <img src="assets/icon.png" alt="MindScape" width="64" height="64" id="loading-logo">
+      <div id="loading-spinner"></div>
+      <p id="loading-text">Loading MindScape...</p>
+    </div>
+  </div>
+
+  <!-- Web content -->
+  <webview id="webview" src="https://mindscapehealth.org/dashboard" autosize="on"></webview>
+
+  <script>
+    const { electronAPI } = window;
+
+    // Title bar controls
+    document.getElementById('btn-minimize').addEventListener('click', () => electronAPI.minimize());
+    document.getElementById('btn-maximize').addEventListener('click', () => electronAPI.maximize());
+    document.getElementById('btn-close').addEventListener('click', () => electronAPI.close());
+
+    // Track maximize state for icon swap
+    electronAPI.onMaximized((isMaximized) => {
+      document.getElementById('icon-maximize').style.display = isMaximized ? 'none' : 'block';
+      document.getElementById('icon-restore').style.display = isMaximized ? 'block' : 'none';
+    });
+
+    // Webview loading
+    const webview = document.getElementById('webview');
+    const loading = document.getElementById('loading');
+
+    webview.addEventListener('did-finish-load', () => {
+      loading.classList.add('hidden');
+    });
+
+    webview.addEventListener('did-fail-load', (event) => {
+      if (event.errorCode !== -3) {
+        document.getElementById('loading-text').textContent = 'Connection error. Retrying...';
+        setTimeout(() => webview.reload(), 3000);
+      }
+    });
+
+    // Open external links in default browser
+    webview.addEventListener('new-window', (event) => {
+      event.preventDefault();
+    });
+  </script>
+</body>
+</html>

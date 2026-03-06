@@ -1,0 +1,78 @@
+name: Build Windows Desktop App
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release (e.g. 1.0.1). Leave empty to use package.json version.'
+        required: false
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Set version from tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: |
+          VERSION="${GITHUB_REF#refs/tags/v}"
+          echo "RELEASE_VERSION=$VERSION" >> $GITHUB_ENV
+          npm version "$VERSION" --no-git-tag-version
+
+      - name: Set version from input
+        if: github.event_name == 'workflow_dispatch' && github.event.inputs.version != ''
+        shell: bash
+        run: |
+          VERSION="${{ github.event.inputs.version }}"
+          echo "RELEASE_VERSION=$VERSION" >> $GITHUB_ENV
+          npm version "$VERSION" --no-git-tag-version
+
+      - name: Read version from package.json
+        if: env.RELEASE_VERSION == ''
+        shell: bash
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          echo "RELEASE_VERSION=$VERSION" >> $GITHUB_ENV
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build and make installer
+        run: npx electron-forge make
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: List build output
+        shell: bash
+        run: find out/make -type f -name "*.exe" -o -name "*.nupkg" -o -name "RELEASES" | head -20
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ env.RELEASE_VERSION }}
+          name: MindScape Desktop v${{ env.RELEASE_VERSION }}
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+          files: |
+            out/make/squirrel.windows/x64/*.exe
+            out/make/squirrel.windows/x64/*.nupkg
+            out/make/squirrel.windows/x64/RELEASES
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
