@@ -73,6 +73,9 @@ jobs:
 
   build-macos:
     runs-on: macos-latest
+    strategy:
+      matrix:
+        arch: [x64, arm64]
 
     steps:
       - name: Checkout repository
@@ -107,7 +110,6 @@ jobs:
       - name: Generate macOS icon
         run: |
           mkdir -p src/assets/icon.iconset
-          # Generate all required sizes for .icns from the 1024px icon
           for size in 16 32 64 128 256 512; do
             sips -z $size $size src/assets/icon-1024.png --out src/assets/icon.iconset/icon_${size}x${size}.png
             double=$((size * 2))
@@ -115,7 +117,6 @@ jobs:
               sips -z $double $double src/assets/icon-1024.png --out src/assets/icon.iconset/icon_${size}x${size}@2x.png
             fi
           done
-          # 512@2x is 1024
           cp src/assets/icon-1024.png src/assets/icon.iconset/icon_512x512@2x.png
           iconutil -c icns src/assets/icon.iconset -o src/assets/icon.icns
           echo "Generated icon.icns"
@@ -123,10 +124,16 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Build and make DMG (universal binary)
-        run: npx electron-forge make --arch=universal
+      - name: Build and make DMG (${{ matrix.arch }})
+        run: npx electron-forge make --arch=${{ matrix.arch }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Rename DMG with arch suffix
+        run: |
+          for f in out/make/*.dmg; do
+            mv "$f" "${f%.dmg}-${{ matrix.arch }}.dmg"
+          done
 
       - name: List build output
         run: find out/make -type f -name "*.dmg" -o -name "*.zip" | head -20
@@ -134,7 +141,7 @@ jobs:
       - name: Upload macOS artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: macos-artifacts
+          name: macos-artifacts-${{ matrix.arch }}
           path: |
             out/make/*.dmg
 
@@ -163,10 +170,16 @@ jobs:
           name: windows-artifacts
           path: artifacts/windows
 
-      - name: Download macOS artifacts
+      - name: Download macOS x64 artifacts
         uses: actions/download-artifact@v4
         with:
-          name: macos-artifacts
+          name: macos-artifacts-x64
+          path: artifacts/macos
+
+      - name: Download macOS arm64 artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: macos-artifacts-arm64
           path: artifacts/macos
 
       - name: List all artifacts
