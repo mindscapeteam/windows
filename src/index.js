@@ -8,7 +8,7 @@ if (require('electron-squirrel-startup')) {
 }
 
 // Auto-update from GitHub Releases
-const updateElectronApp = require('update-electron-app');
+const { updateElectronApp } = require('update-electron-app');
 updateElectronApp({
   repo: 'mindscapeteam/windows',
   updateInterval: '1 hour',
