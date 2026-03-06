@@ -33,7 +33,7 @@ jobs:
         run: |
           VERSION="${GITHUB_REF#refs/tags/v}"
           echo "RELEASE_VERSION=$VERSION" >> $GITHUB_ENV
-          npm version "$VERSION" --no-git-tag-version
+          npm version "$VERSION" --no-git-tag-version --allow-same-version
 
       - name: Set version from input
         if: github.event_name == 'workflow_dispatch' && github.event.inputs.version != ''
@@ -41,7 +41,7 @@ jobs:
         run: |
           VERSION="${{ github.event.inputs.version }}"
           echo "RELEASE_VERSION=$VERSION" >> $GITHUB_ENV
-          npm version "$VERSION" --no-git-tag-version
+          npm version "$VERSION" --no-git-tag-version --allow-same-version
 
       - name: Read version from package.json
         if: env.RELEASE_VERSION == ''
