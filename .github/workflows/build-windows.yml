@@ -2,6 +2,7 @@ name: Build Desktop Apps
 
 on:
   push:
+    branches: [main]
     tags:
       - 'v*'
   workflow_dispatch:
@@ -40,6 +41,23 @@ jobs:
         shell: bash
         run: |
           VERSION="${{ github.event.inputs.version }}"
+          echo "RELEASE_VERSION=$VERSION" >> $GITHUB_ENV
+          npm version "$VERSION" --no-git-tag-version --allow-same-version
+
+      - name: Auto-increment patch version on push to main
+        if: env.RELEASE_VERSION == '' && github.event_name == 'push' && github.ref == 'refs/heads/main'
+        shell: bash
+        run: |
+          BASE=$(node -p "require('./package.json').version")
+          # Check existing tags to find the next available patch version
+          git fetch --tags
+          MAJOR=$(echo "$BASE" | cut -d. -f1)
+          MINOR=$(echo "$BASE" | cut -d. -f2)
+          PATCH=$(echo "$BASE" | cut -d. -f3)
+          while git rev-parse "v${MAJOR}.${MINOR}.${PATCH}" >/dev/null 2>&1; do
+            PATCH=$((PATCH + 1))
+          done
+          VERSION="${MAJOR}.${MINOR}.${PATCH}"
           echo "RELEASE_VERSION=$VERSION" >> $GITHUB_ENV
           npm version "$VERSION" --no-git-tag-version --allow-same-version
 
@@ -98,6 +116,21 @@ jobs:
         if: github.event_name == 'workflow_dispatch' && github.event.inputs.version != ''
         run: |
           VERSION="${{ github.event.inputs.version }}"
+          echo "RELEASE_VERSION=$VERSION" >> $GITHUB_ENV
+          npm version "$VERSION" --no-git-tag-version --allow-same-version
+
+      - name: Auto-increment patch version on push to main
+        if: env.RELEASE_VERSION == '' && github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          BASE=$(node -p "require('./package.json').version")
+          git fetch --tags
+          MAJOR=$(echo "$BASE" | cut -d. -f1)
+          MINOR=$(echo "$BASE" | cut -d. -f2)
+          PATCH=$(echo "$BASE" | cut -d. -f3)
+          while git rev-parse "v${MAJOR}.${MINOR}.${PATCH}" >/dev/null 2>&1; do
+            PATCH=$((PATCH + 1))
+          done
+          VERSION="${MAJOR}.${MINOR}.${PATCH}"
           echo "RELEASE_VERSION=$VERSION" >> $GITHUB_ENV
           npm version "$VERSION" --no-git-tag-version --allow-same-version
 

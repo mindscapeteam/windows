@@ -194,13 +194,13 @@ ipcMain.on('window:close', () => mainWindow?.close());
 // Handle new window requests
 app.on('web-contents-created', (_, contents) => {
   contents.setWindowOpenHandler(({ url }) => {
-    // Allow Google/Firebase auth popups to open inside Electron
+    // Google/Firebase auth popups: open in a child window that shares
+    // the main window's session so auth tokens propagate back.
     if (
       url.includes('accounts.google.com') ||
       url.includes('googleapis.com') ||
       url.includes('firebaseapp.com') ||
-      url.includes('firebaseauth') ||
-      url.includes('mindscapehealth.org')
+      url.includes('firebaseauth')
     ) {
       return {
         action: 'allow',
@@ -213,9 +213,16 @@ app.on('web-contents-created', (_, contents) => {
           webPreferences: {
             contextIsolation: true,
             nodeIntegration: false,
+            // Share session with main window so auth persists
+            partition: undefined,
           },
         },
       };
+    }
+    // MindScape URLs should navigate in the main window, not open a new one
+    if (url.includes('mindscapehealth.org')) {
+      mainWindow?.loadURL(url);
+      return { action: 'deny' };
     }
     // Everything else opens in the default browser
     shell.openExternal(url);
