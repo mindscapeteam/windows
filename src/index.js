@@ -1,8 +1,45 @@
-const { app, BrowserWindow, Tray, Menu, ipcMain, nativeImage, shell } = require('electron');
+const { app, BrowserWindow, Tray, Menu, ipcMain, nativeImage, shell, dialog, session } = require('electron');
 const path = require('node:path');
+const fs = require('node:fs');
 
-// Handle creating/removing shortcuts on Windows when installing/uninstalling.
-if (process.platform === 'win32' && require('electron-squirrel-startup')) {
+// ---------------------------------------------------------------------------
+// MIN-126: Squirrel install / uninstall lifecycle.
+//
+// Squirrel.Windows runs our executable with a special argv during install,
+// update, and uninstall events. `electron-squirrel-startup` handles the
+// Start-Menu-shortcut side of those events, but on uninstall we ALSO want
+// to wipe the userData directory so a fresh install really is fresh — the
+// default Squirrel behavior leaves `%APPDATA%/MindScape` behind, which is
+// where Firebase Auth tokens, cookies, and IndexedDB live.
+//
+// Order matters here: we handle the uninstall side BEFORE delegating to
+// `electron-squirrel-startup`, because that module calls `app.quit()` and
+// our cleanup must run synchronously while the process is still alive.
+// ---------------------------------------------------------------------------
+function handleSquirrelLifecycle() {
+  if (process.platform !== 'win32') return false;
+  const squirrelArg = process.argv[1] || '';
+  if (squirrelArg === '--squirrel-uninstall') {
+    try {
+      const userData = app.getPath('userData');
+      // Be paranoid: only proceed if the path actually points inside our
+      // expected app data folder (defends against any weirdness with
+      // app.getPath returning the wrong thing on a misconfigured machine).
+      if (userData && userData.includes('MindScape')) {
+        fs.rmSync(userData, { recursive: true, force: true });
+      }
+    } catch (err) {
+      // Best-effort: log and proceed. Failing the uninstall over leftover
+      // user data is worse than leaving it behind for the user to clear.
+      console.error('userData cleanup failed during uninstall:', err);
+    }
+  }
+  // Delegate the rest (shortcut create/remove on install/update/uninstall/
+  // obsolete) to electron-squirrel-startup, which will call app.quit().
+  return require('electron-squirrel-startup');
+}
+
+if (handleSquirrelLifecycle()) {
   app.quit();
 }
 
@@ -135,6 +172,30 @@ function createWindow() {
   });
 }
 
+// MIN-126: nuke all locally persisted state for mindscapehealth.org. Used
+// by the tray's "Sign out + reset" affordance so users with token issues
+// can recover without uninstalling. Clears cookies, IndexedDB (where
+// Firebase Auth tokens live), localStorage, serviceWorkers, cache — the
+// full set. Returns a promise that resolves when storage is wiped.
+async function resetLocalState() {
+  const sess = session.defaultSession;
+  await sess.clearStorageData({
+    origin: 'https://mindscapehealth.org',
+    storages: [
+      'cookies',
+      'indexdb',
+      'localstorage',
+      'serviceworkers',
+      'cachestorage',
+      'websql',
+      'shadercache',
+    ],
+  });
+  // Also clear any general HTTP cache, since stale 401 responses can keep
+  // the app stuck on a sign-in loop until the cache turns over.
+  await sess.clearCache();
+}
+
 function createTray() {
   const iconPath = path.join(__dirname, 'assets', 'icon.png');
   let trayIcon;
@@ -161,6 +222,40 @@ function createTray() {
       checked: app.getLoginItemSettings().openAtLogin,
       click: (menuItem) => {
         app.setLoginItemSettings({ openAtLogin: menuItem.checked });
+      },
+    },
+    { type: 'separator' },
+    {
+      label: 'Sign out + reset',
+      click: async () => {
+        // Confirm because this is destructive (wipes local state). User
+        // would otherwise have to uninstall + reinstall to recover from a
+        // broken auth state.
+        const result = await dialog.showMessageBox(mainWindow, {
+          type: 'warning',
+          buttons: ['Cancel', 'Sign out + reset'],
+          defaultId: 0,
+          cancelId: 0,
+          title: 'Sign out + reset',
+          message: 'Sign out and clear local state?',
+          detail:
+            'This signs you out and clears all locally cached data for ' +
+            'mindscapehealth.org. You will need to sign in again. The app ' +
+            'itself stays installed.',
+        });
+        if (result.response !== 1) return;
+        try {
+          await resetLocalState();
+        } catch (err) {
+          console.error('resetLocalState failed:', err);
+        }
+        // Force-reload the main window so the user lands on the sign-in
+        // page with no stale auth.
+        if (mainWindow) {
+          mainWindow.show();
+          mainWindow.focus();
+          mainWindow.loadURL(PRODUCTION_URL);
+        }
       },
     },
     { type: 'separator' },

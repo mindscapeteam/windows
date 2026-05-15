@@ -7,15 +7,32 @@ module.exports = {
     name: 'MindScape',
     icon: './src/assets/icon',
     extraResource: ['./src/assets'],
+    // Surfaces in Windows file properties (right-click → Properties →
+    // Details) and in Add/Remove Programs. MIN-126.
+    win32metadata: {
+      CompanyName: 'MindScape Health',
+      ProductName: 'MindScape',
+      FileDescription: 'MindScape Desktop',
+      InternalName: 'MindScape',
+      OriginalFilename: 'MindScape.exe',
+    },
+    appCopyright: 'Copyright (C) 2026 MindScape Health',
   },
   rebuildConfig: {},
   makers: [
     {
       name: '@electron-forge/maker-squirrel',
       config: {
+        // Squirrel uses these for the installer UI + Add/Remove Programs entry.
         name: 'MindScape',
+        // Friendly publisher name visible in Add/Remove Programs.
+        authors: 'MindScape Health',
+        description: 'MindScape Desktop — culturally-informed mental healthcare',
         setupIcon: './src/assets/icon.ico',
         iconUrl: 'https://raw.githubusercontent.com/mindscapeteam/windows/main/src/assets/icon.ico',
+        // Setup.exe filename pattern (avoids the unhelpful default
+        // "Setup.exe"). Tag-driven version is substituted by the CI.
+        setupExe: 'MindScape-Setup.exe',
       },
     },
     {

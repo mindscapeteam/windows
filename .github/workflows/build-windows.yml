@@ -193,7 +193,16 @@ jobs:
           elif [[ -n "${{ github.event.inputs.version }}" ]]; then
             VERSION="${{ github.event.inputs.version }}"
           else
-            VERSION=$(node -p "require('./package.json').version")
+            # Auto-increment patch version to match build jobs
+            BASE=$(node -p "require('./package.json').version")
+            git fetch --tags
+            MAJOR=$(echo "$BASE" | cut -d. -f1)
+            MINOR=$(echo "$BASE" | cut -d. -f2)
+            PATCH=$(echo "$BASE" | cut -d. -f3)
+            while git rev-parse "v${MAJOR}.${MINOR}.${PATCH}" >/dev/null 2>&1; do
+              PATCH=$((PATCH + 1))
+            done
+            VERSION="${MAJOR}.${MINOR}.${PATCH}"
           fi
           echo "RELEASE_VERSION=$VERSION" >> $GITHUB_ENV
 
